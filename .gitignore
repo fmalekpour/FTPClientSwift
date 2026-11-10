@@ -1,0 +1,19 @@
+# Local notes and unpublished development material
+/private/
+
+# SwiftPM and Xcode
+/.build/
+/Packages/
+/.swiftpm/
+/DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.netrc
+
+# macOS
+.DS_Store
