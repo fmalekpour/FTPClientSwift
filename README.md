@@ -16,7 +16,7 @@ FTPS is FTP over TLS. This package does **not** implement SFTP (SSH File Transfe
 
 ## Requirements
 
-- Swift 6.4 or later.
+- Swift 6.3 or later.
 - iOS 15+, macOS 14+, tvOS 17+, or watchOS 10+.
 
 These are the deployment targets declared in `Package.swift`. Runtime validation on every platform and minimum OS version is not yet complete.
@@ -124,7 +124,7 @@ swift build
 swift test
 ```
 
-Run tests on macOS with Swift 6.4 or later. Some integration fixtures require Node.js and OpenSSL; Node-dependent tests are skipped when Node.js is unavailable. These tools are not runtime dependencies.
+Run tests on macOS with Swift 6.3 or later. Some integration fixtures require Node.js and OpenSSL; Node-dependent tests are skipped when Node.js is unavailable. These tools are not runtime dependencies.
 
 ## License
 
