@@ -4,7 +4,7 @@
 
 ## Validation
 
-- [ ] `swift test`
+- [ ] `swift test --no-parallel`
 - [ ] Relevant platform build(s)
 - [ ] Documentation updated
 - [ ] No credentials, private keys, or production data included

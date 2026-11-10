@@ -121,10 +121,12 @@ See the [security guide](docs/security.md) and [behavior reference](docs/referen
 
 ```sh
 swift build
-swift test
+swift test --no-parallel
 ```
 
 Run tests on macOS with Swift 6.3 or later. Some integration fixtures require Node.js and OpenSSL; Node-dependent tests are skipped when Node.js is unavailable. These tools are not runtime dependencies.
+
+Run the full suite sequentially, as CI does, to avoid competing certificate-generation processes and local servers causing spurious timeout failures. Tests that exercise concurrent client operations still run those operations concurrently within each test.
 
 ## License
 

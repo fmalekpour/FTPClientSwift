@@ -15,7 +15,7 @@ Search existing issues and confirm the behavior against the latest `main` branch
 
 1. Clone the repository.
 2. Open it in Xcode or run `swift package resolve`.
-3. Run `swift test`.
+3. Run `swift test --no-parallel`.
 4. For platform checks, build the package for the declared Apple platforms.
 
 The integration tests use local loopback fixtures. FTPS integration tests may use Node.js and OpenSSL when available; these are test-only tools and are not runtime dependencies.

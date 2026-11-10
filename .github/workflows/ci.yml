@@ -24,6 +24,8 @@ jobs:
           test -x /opt/homebrew/bin/node || test -x /usr/local/bin/node || test -x /usr/bin/node
           test -x /opt/homebrew/bin/openssl || test -x /usr/local/bin/openssl || test -x /usr/bin/openssl
       - name: Run tests
-        run: swift test
+        # TLS fixtures generate certificates and launch local servers. Running
+        # all fixtures concurrently can starve short timeout tests on CI runners.
+        run: swift test --no-parallel
       - name: Build release
         run: swift build -c release
