@@ -2348,4 +2348,40 @@ private final class LoopbackFTPServer: @unchecked Sendable {
     }
     await channel.disconnect()
 }
+@Test func sessionLogRedactionCanBeDisabledAndReenabled() async throws {
+    let server = try LoopbackFTPServer()
+    let client = FTPClient(configuration: FTPClientConfiguration(
+        host: "127.0.0.1", port: server.port, username: "demo", password: "secret",
+        redactSensitiveInformation: false
+    ))
+    await client.setSessionLogging(true)
+    try await client.connect()
+    let unredacted = await client.sessionLog()
+    #expect(unredacted.contains("> USER demo"))
+    #expect(unredacted.contains("> PASS secret"))
+    await client.setRedactSensitiveInformation(true)
+    await client.clearSessionLog()
+    _ = try await client.sendRawCommand("USER demo")
+    _ = try await client.sendRawCommand("PASS secret")
+    let redacted = await client.sessionLog()
+    #expect(redacted.contains("> USER [redacted]"))
+    #expect(redacted.contains("> PASS [redacted]"))
+    #expect(!redacted.contains("secret"))
+    #expect(!redacted.contains("demo"))
+    await client.disconnect()
+}
+@Test func emptyUsernameSendsAnonymousAndPreservesPassword() async throws {
+    let server = try LoopbackFTPServer()
+    let client = FTPClient(configuration: FTPClientConfiguration(
+        host: "127.0.0.1", port: server.port, username: "", password: "supplied-password",
+        redactSensitiveInformation: false
+    ))
+    await client.setSessionLogging(true)
+    try await client.connect()
+    let log = await client.sessionLog()
+    #expect(log.contains("> USER anonymous"))
+    #expect(log.contains("> PASS supplied-password"))
+    #expect(await client.isAuthenticated())
+    await client.disconnect()
+}
 #endif

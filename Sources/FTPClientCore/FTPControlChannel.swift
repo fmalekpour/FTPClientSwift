@@ -95,6 +95,10 @@ public actor FTPControlChannel {
     private var dataProtectionConfigured = false
     private var modeZEnabled = false
     private var nextAllocationSize: UInt64 = 0
+    private var diagnosticLoggingEnabled = false
+    private var redactSensitiveInformation = true
+    private var diagnosticSecrets: [String] = []
+    private let diagnosticID = UUID().uuidString.prefix(8)
     private var loggingEnabled = false
     private var logLines: [String] = []
     private var logBytes = 0
@@ -134,9 +138,11 @@ public actor FTPControlChannel {
         counter.started = ProcessInfo.processInfo.systemUptime
         if direction == .download { downloadCounter = counter } else { uploadCounter = counter }
         activeTransferDirection = direction
+        diagnostic("info", "Transfer started: \(direction)")
     }
 
     private func recordTransferBytes(_ count: Int) {
+        diagnostic("debug", "Transfer chunk: \(count) bytes; direction=\(String(describing: activeTransferDirection))")
         guard count > 0, let direction = activeTransferDirection else { return }
         if direction == .download {
             let (value, overflow) = downloadCounter.bytes.addingReportingOverflow(UInt64(count))
@@ -160,6 +166,8 @@ public actor FTPControlChannel {
             uploadCounter.rate = transferRate(uploadCounter, now: now)
             uploadCounter.succeeded = succeeded
         }
+        let counter = direction == .download ? downloadCounter : uploadCounter
+        diagnostic(succeeded ? "info" : "error", "Transfer finished: \(direction), success=\(succeeded), bytes=\(counter.bytes), bytes/sec=\(counter.rate)")
         activeTransferDirection = nil
     }
 
@@ -190,6 +198,13 @@ public actor FTPControlChannel {
     }
 
     public func connect(configuration: FTPClientConfiguration) async throws {
+        diagnosticLoggingEnabled = configuration.loggingEnabled
+        redactSensitiveInformation = configuration.redactSensitiveInformation
+        diagnosticSecrets = FTPDiagnosticRedactor.secrets(in: configuration)
+        diagnostic("info", "Connecting to \(configuration.host):\(configuration.port); security=\(configuration.security), dataMode=\(configuration.dataConnectionMode), connectTimeout=\(configuration.connectTimeout)s, readTimeout=\(configuration.readTimeout)s")
+        if let proxy = configuration.proxy { diagnostic("info", "Proxy endpoint: \(proxy.endpoint.host):\(proxy.endpoint.port)") }
+        if configuration.security == .none { diagnostic("warning", "Control connection is unencrypted") }
+        if !configuration.requireServerCertificateValidation { diagnostic("warning", "Server certificate chain validation is disabled") }
         try beginOperation()
         defer { operationInProgress = false }
         if isConnected {
@@ -321,12 +336,17 @@ public actor FTPControlChannel {
             guard self.connection === connection else {
                 throw FTPError.connectionFailed(description: "Connection closed during connect")
             }
+            diagnostic("info", "Control connection ready; security=\(configuration.security)")
             isConnected = true
             isAuthenticated = false
+            if diagnosticLoggingEnabled, let info = try? await tlsSessionInfo() {
+                diagnostic("info", "TLS negotiated: \(info.protocolVersion), cipher=\(info.cipherSuite), chainValidationRequired=\(info.chainValidationRequired)")
+            }
             if configuration.security != .none {
                 try await configureDataProtection(configuration: configuration, allowLoginRequired: true)
             }
         } catch {
+            diagnostic("error", "Operation failed: \(error)")
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
             throw error
@@ -350,7 +370,7 @@ public actor FTPControlChannel {
             return
         }
 
-        let userReply = try await sendCommandLocked("USER \(configuration.username)")
+        let userReply = try await sendCommandLocked("USER \(configuration.loginUsername)")
 
         if userReply.code == 230 {
             try await finishLogin(configuration: configuration)
@@ -383,6 +403,7 @@ public actor FTPControlChannel {
             try await configureDataProtection(configuration: configuration, allowLoginRequired: false)
         }
         isAuthenticated = true
+        diagnostic("info", "Authentication completed")
         loginVerified = true
         if configuration.autoSyst {
             let reply = try await sendCommandLocked("SYST")
@@ -420,32 +441,32 @@ public actor FTPControlChannel {
         case 1:
             try await authenticate(proxyUsername, proxyPassword)
             try await command("SITE \(host)")
-            try await authenticate(configuration.username, configuration.password, account: configuration.account)
+            try await authenticate(configuration.loginUsername, configuration.password, account: configuration.account)
         case 2:
-            try await authenticate("\(configuration.username)@\(hostAndPort)", configuration.password, account: configuration.account)
+            try await authenticate("\(configuration.loginUsername)@\(hostAndPort)", configuration.password, account: configuration.account)
         case 3:
             try await authenticate(proxyUsername, proxyPassword)
-            try await authenticate("\(configuration.username)@\(hostAndPort)", configuration.password, account: configuration.account)
+            try await authenticate("\(configuration.loginUsername)@\(hostAndPort)", configuration.password, account: configuration.account)
         case 4:
-            try await authenticate("\(configuration.username)@\(hostAndPort) \(proxyUsername)", configuration.password, account: proxyPassword)
+            try await authenticate("\(configuration.loginUsername)@\(hostAndPort) \(proxyUsername)", configuration.password, account: proxyPassword)
         case 5:
             try await authenticate(proxyUsername, proxyPassword)
             try await command("OPEN \(host)")
-            try await authenticate(configuration.username, configuration.password, account: configuration.account)
+            try await authenticate(configuration.loginUsername, configuration.password, account: configuration.account)
         case 6:
             try await command("USER \(proxyUsername)@\(host)", sensitive: true)
-            try await authenticate(configuration.username, configuration.password, account: configuration.account)
+            try await authenticate(configuration.loginUsername, configuration.password, account: configuration.account)
         case 7:
             try await command("USER \(proxyUsername)", sensitive: true)
             try await command("USER \(proxyPassword)", sensitive: true)
             try await command("SITE \(hostAndPort)")
-            try await authenticate(configuration.username, configuration.password, account: configuration.account)
+            try await authenticate(configuration.loginUsername, configuration.password, account: configuration.account)
         case 8:
-            try await authenticate("\(configuration.username)@\(proxyUsername)@\(host)", "\(configuration.password)@\(proxyPassword)")
+            try await authenticate("\(configuration.loginUsername)@\(proxyUsername)@\(host)", "\(configuration.password)@\(proxyPassword)")
         case 9:
             try await command(proxyUsername, sensitive: true)
             try await command(proxyPassword, sensitive: true)
-            try await command(configuration.username, sensitive: true)
+            try await command(configuration.loginUsername, sensitive: true)
             try await command(configuration.password, sensitive: true)
         default: throw FTPError.invalidState(description: "Unsupported FTP proxy method: \(method)")
         }
@@ -553,8 +574,10 @@ public actor FTPControlChannel {
             self.configuration = configuration
             self.importedIdentity = identity
             explicitTLSStream = stream
+            diagnostic("info", "Control channel upgraded to TLS")
             try await configureDataProtection(configuration: configuration, allowLoginRequired: true)
         } catch {
+            diagnostic("error", "Operation failed: \(error)")
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
             throw error
@@ -582,6 +605,7 @@ public actor FTPControlChannel {
             dataProtected = !requestedClear
             dataProtectionConfigured = true
         } catch {
+            diagnostic("error", "Operation failed: \(error)")
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
             throw error
@@ -676,8 +700,12 @@ public actor FTPControlChannel {
         }
         payload.append(contentsOf: [13, 10])
         let verb = command.split(whereSeparator: { $0.isWhitespace }).first?.uppercased() ?? ""
-        let sensitive = redact || ["USER", "PASS", "ACCT", "ADAT"].contains(verb)
-        appendLog(sensitive ? "> \(verb) [redacted]" : "> \(command)")
+        let sensitive = redact || ["USER", "PASS", "ACCT", "ADAT", "SITE"].contains(verb)
+        if sensitive {
+            let argument = String(command.drop(while: { !$0.isWhitespace }).drop(while: { $0.isWhitespace }))
+            if !argument.isEmpty, !diagnosticSecrets.contains(argument) { diagnosticSecrets.append(argument) }
+        }
+        appendLog(sensitive && redactSensitiveInformation ? "> \(verb) [redacted]" : "> \(command)")
         do {
             if let explicitTLSStream {
                 try await explicitTLSStream.send(payload)
@@ -686,9 +714,11 @@ public actor FTPControlChannel {
             }
             let reply = try await readReply(using: connection)
             lastReply = reply
-            appendLog(sensitive ? "< \(reply.code.map(String.init) ?? "???") [redacted]" : "< \(reply.message)")
+            appendLog(sensitive && redactSensitiveInformation ? "< \(reply.code.map(String.init) ?? "???") [redacted]" : "< \(reply.message)")
+            if let code = reply.code, code >= 400 { diagnostic(code >= 500 ? "error" : "warning", "Server returned FTP status \(code)") }
             return reply
         } catch {
+            diagnostic("error", "Operation failed: \(error)")
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
             throw error
@@ -932,6 +962,7 @@ public actor FTPControlChannel {
             try requirePositiveCompletion(completionReply, operation: command)
             return listingData
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -972,6 +1003,7 @@ public actor FTPControlChannel {
             succeeded = true
             return payload
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -1034,6 +1066,7 @@ public actor FTPControlChannel {
                 throw FTPError.protocolViolation(description: "Resumed upload size does not match local data")
             }
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -1080,6 +1113,7 @@ public actor FTPControlChannel {
             try requirePositiveCompletion(reply, operation: "RETR")
             succeeded = true
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -1125,6 +1159,7 @@ public actor FTPControlChannel {
             let reply = try await finishTransferKeepAlive()
             try requirePositiveCompletion(reply, operation: verb)
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -1272,6 +1307,7 @@ public actor FTPControlChannel {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -1392,6 +1428,7 @@ public actor FTPControlChannel {
                 }
             }
         } catch {
+            diagnostic("error", "Transfer failed: \(error)")
             let keepAliveError = await abortTransferKeepAlive(dataConnection)
             resetConnection()
             if Task.isCancelled { throw CancellationError() }
@@ -1450,14 +1487,17 @@ public actor FTPControlChannel {
     }
 
     private func startDataTransfer(command: String, restartOffset: UInt64? = nil) async throws -> FTPDataConnection {
+        diagnostic("info", "Starting data command: \(command); restartOffset=\(restartOffset ?? 0), protected=\(dataProtected), compressed=\(modeZEnabled)")
         guard let configuration else { throw FTPError.invalidState(description: "Not connected") }
         guard configuration.security == .none || isAuthenticated else {
             throw FTPError.invalidState(description: "FTPS data protection requires authentication")
         }
         if configuration.dataConnectionMode == .active {
+            diagnostic("debug", "Opening active data listener; portRange=\(configuration.activePortRangeStart)...\(configuration.activePortRangeEnd)")
             return try await startActiveDataTransfer(command: command, restartOffset: restartOffset)
         }
         let endpoint = try await openPassiveDataConnection()
+        diagnostic("debug", "Passive data endpoint: \(endpoint.host):\(endpoint.port)")
         let dataConnection = endpoint.connection
         let compressed = modeZEnabled
         let protectedData = dataProtected
@@ -1818,6 +1858,7 @@ public actor FTPControlChannel {
     }
 
     public func disconnect() async {
+        diagnostic("info", "Disconnect requested")
         if !operationInProgress && aggregatingUpload { endChunkedUploadMetrics(succeeded: false) }
         if !operationInProgress && isConnected {
             operationInProgress = true
@@ -1825,6 +1866,16 @@ public actor FTPControlChannel {
             operationInProgress = false
         }
         resetConnection()
+    }
+
+    public func setLoggingEnabled(_ enabled: Bool) { diagnosticLoggingEnabled = enabled }
+
+    public func setRedactSensitiveInformation(_ enabled: Bool) { redactSensitiveInformation = enabled }
+
+    private func diagnostic(_ level: String, _ message: @autoclosure () -> String) {
+        guard diagnosticLoggingEnabled else { return }
+        let safe = FTPDiagnosticRedactor.redact(message(), secrets: diagnosticSecrets, enabled: redactSensitiveInformation)
+        print("[FTPClient \(diagnosticID)] [\(Date().ISO8601Format())] [\(level.uppercased())] \(safe)")
     }
 
     public func setSessionLogging(_ enabled: Bool) { loggingEnabled = enabled }
@@ -1854,7 +1905,9 @@ public actor FTPControlChannel {
     }
 
     private func appendLog(_ line: String) {
+        diagnostic("debug", line)
         guard loggingEnabled else { return }
+        let line = FTPDiagnosticRedactor.redact(line, secrets: diagnosticSecrets, enabled: redactSensitiveInformation)
         let size = line.utf8.count + 1
         guard size <= maxLogBytes else { return }
         while logBytes + size > maxLogBytes, !logLines.isEmpty {
@@ -1866,12 +1919,14 @@ public actor FTPControlChannel {
 
     private func beginOperation() throws {
         guard !operationInProgress, aggregateUploadOwner == nil || FTPChunkedUploadScope.identifier == aggregateUploadOwner else {
+            diagnostic("warning", "Rejected concurrent operation on the control channel")
             throw FTPError.invalidState(description: "Another FTP operation is in progress")
         }
         operationInProgress = true
     }
 
     private func resetConnection() {
+        diagnostic("info", "Resetting connection; connected=\(isConnected), authenticated=\(isAuthenticated)")
         connection?.cancel()
         connection = nil
         explicitTLSStream = nil
@@ -1890,13 +1945,20 @@ public actor FTPControlChannel {
         nextAllocationSize = 0
     }
 
+    private func recordTransportState(_ state: String) {
+        diagnostic("debug", "Transport state: \(state)")
+    }
+
     private func waitForReady(connection: NWConnection) async throws {
+        diagnostic("debug", "Waiting for transport: \(connection.endpoint)")
         let timeout = configuration?.connectTimeout ?? 30
         try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let resumeGuard = ContinuationResumeGuard()
 
-            connection.stateUpdateHandler = { state in
+            connection.stateUpdateHandler = { [weak self] state in
+                let description = String(describing: state)
+                Task { await self?.recordTransportState(description) }
                 switch state {
                 case .ready:
                     guard resumeGuard.tryResume() else {

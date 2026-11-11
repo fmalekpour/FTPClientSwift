@@ -22,6 +22,8 @@ public actor FTPClient {
 
         let facade = FTPClientFacade()
         // The idiomatic configuration selects transport explicitly, regardless of port.
+        facade.loggingEnabled = configuration.loggingEnabled
+        facade.redactSensitiveInformation = configuration.redactSensitiveInformation
         facade.autoFix = false
         facade.hostname = configuration.host
         facade.port = configuration.port
@@ -245,6 +247,12 @@ public actor FTPClient {
     public func disconnect() async {
         await facade.disconnect()
     }
+
+    /// Enable or disable verbose console diagnostics, independently of the retained session log.
+    public func setLoggingEnabled(_ enabled: Bool) async { await facade.setLoggingEnabled(enabled) }
+
+    /// Applies to future console output and retained session log entries.
+    public func setRedactSensitiveInformation(_ enabled: Bool) async { await facade.setRedactSensitiveInformation(enabled) }
 
     public func setSessionLogging(_ enabled: Bool) async { await facade.setSessionLogging(enabled) }
     public func sessionLog() async -> String { await facade.sessionLog() }

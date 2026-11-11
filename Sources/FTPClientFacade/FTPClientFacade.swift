@@ -88,6 +88,10 @@ public final class FTPClientFacade: @unchecked Sendable {
         set { progressMonSize64 = UInt64(max(0, newValue)) }
     }
     public var allocateSize: UInt64
+    /// Console diagnostics; use setLoggingEnabled to change this during a session.
+    public var loggingEnabled = false
+    /// Use setRedactSensitiveInformation to change this during a session.
+    public var redactSensitiveInformation = true
     public var keepSessionLog: Bool
     public var syncMustMatch: String
     public var syncMustNotMatch: String
@@ -352,7 +356,9 @@ public final class FTPClientFacade: @unchecked Sendable {
             localIPAddress: clientIpAddress.isEmpty ? nil : clientIpAddress,
             legacyListingTimeZoneIdentifier: legacyListingTimeZoneIdentifier,
             maximumBufferedBytes: maximumBufferedBytes,
-            preserveDownloadModificationTime: preserveDownloadModificationTime
+            preserveDownloadModificationTime: preserveDownloadModificationTime,
+            loggingEnabled: loggingEnabled,
+            redactSensitiveInformation: redactSensitiveInformation
         )
 
         let policy = FTPSecurityPolicy(requireServerCertificateValidation: requireSslCertVerify, pinnedPublicKeyHashes: pinnedPublicKeyHashes, trustedRootCertificates: trustedRootCertificates)
@@ -1335,6 +1341,16 @@ public final class FTPClientFacade: @unchecked Sendable {
         await controlChannel.disconnect()
         if let reply = await controlChannel.lastReply { lastReply = reply.message }
         listingCache = nil
+    }
+
+    public func setLoggingEnabled(_ enabled: Bool) async {
+        loggingEnabled = enabled
+        await controlChannel.setLoggingEnabled(enabled)
+    }
+
+    public func setRedactSensitiveInformation(_ enabled: Bool) async {
+        redactSensitiveInformation = enabled
+        await controlChannel.setRedactSensitiveInformation(enabled)
     }
 
     public func setSessionLogging(_ enabled: Bool) async {

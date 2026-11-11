@@ -117,6 +117,34 @@ See the [security guide](docs/security.md) and [behavior reference](docs/referen
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
+An empty `username` is sent as `anonymous` when logging in, including through traditional FTP proxies. The configured password is preserved, including an empty password; set an anonymous password explicitly if your server requires one.
+
+## Diagnostic logging
+
+Enable verbose console output when configuring a client:
+
+```swift
+let configuration = FTPClientConfiguration(
+    host: "ftp.example.com",
+    username: "username",
+    password: "password",
+    security: .explicitTLS,
+    loggingEnabled: true,
+    redactSensitiveInformation: false // Optional: include credentials in logs.
+)
+let client = FTPClient(configuration: configuration)
+try await client.connect()
+
+// Change console logging without reconnecting.
+await client.setLoggingEnabled(false)
+```
+
+Logging is off by default. Output includes timestamps, a client identifier, severity labels, connection and authentication events, TLS details, FTP commands and replies, data endpoints, transfer chunks and totals, and failures. By default, credentials and sensitive authentication/SITE exchanges are redacted; file contents, private keys, and raw proxy authentication exchanges are not printed. Hosts, paths, and other server messages can appear, so review logs before sharing them. Verbose per-chunk output can affect transfer performance.
+
+`redactSensitiveInformation` defaults to `true`. Set it to `false` to preserve sensitive commands, replies, and message values in both console output and retained session logs. Toggle it at runtime with `await client.setRedactSensitiveInformation(false)` (or `true` to restore redaction). This affects future entries only; use `clearSessionLog()` to remove previously retained entries. Control characters are still escaped for terminal safety.
+
+Console logging is independent of `setSessionLogging(_:)`, which enables a bounded in-memory command/reply transcript retrieved with `sessionLog()`. Facade users can set `loggingEnabled` before connecting or call `setLoggingEnabled(_:)` during a session.
+
 ## Build and test
 
 ```sh

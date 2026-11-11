@@ -99,8 +99,13 @@ public enum FTPProxy: Sendable, Equatable {
 }
 
 public struct FTPClientConfiguration: Sendable, Equatable {
+    /// Print detailed diagnostics to standard output. Disabled by default.
+    public var loggingEnabled: Bool
+    /// Redact credentials in console output and retained session logs.
+    public var redactSensitiveInformation: Bool
     public var host: String
     public var port: Int
+    /// An empty username logs in as "anonymous". The password is passed unchanged.
     public var username: String
     public var password: String
     public var account: String?
@@ -147,6 +152,9 @@ public struct FTPClientConfiguration: Sendable, Equatable {
     public var maximumBufferedBytes: Int
     public var preserveDownloadModificationTime: Bool
 
+    /// Resolve at login time because callers can modify username after initialization.
+    var loginUsername: String { username.isEmpty ? "anonymous" : username }
+
     public init(
         host: String,
         port: Int = 21,
@@ -189,8 +197,12 @@ public struct FTPClientConfiguration: Sendable, Equatable {
         localIPAddress: String? = nil,
         legacyListingTimeZoneIdentifier: String? = nil,
         maximumBufferedBytes: Int = 268_435_456,
-        preserveDownloadModificationTime: Bool = false
+        preserveDownloadModificationTime: Bool = false,
+        loggingEnabled: Bool = false,
+        redactSensitiveInformation: Bool = true
     ) {
+        self.loggingEnabled = loggingEnabled
+        self.redactSensitiveInformation = redactSensitiveInformation
         self.host = host
         self.port = port
         self.username = username
