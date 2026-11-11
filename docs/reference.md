@@ -1,6 +1,6 @@
 # Behavior and Compatibility Reference
 
-Detailed transfer semantics and implementation limits for version 1.0.0. See the [usage guide](usage.md) for examples.
+Detailed transfer semantics and implementation limits for version 1.0.1. See the [usage guide](usage.md) for examples.
 
 ## TLS and certificates
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+- Add opt-in console diagnostics for connections, FTP commands and replies, and transfers.
+- Add configurable sensitive-information redaction for console and session logs.
+- Use `anonymous` when the configured username is empty, preserving the supplied password.
+- Provide readable `LocalizedError` descriptions, including when bridged to `NSError`.
+
 ## 1.0.0
 
 Initial release, prepared for publication.

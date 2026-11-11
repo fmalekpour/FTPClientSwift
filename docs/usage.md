@@ -7,7 +7,7 @@ In Xcode, choose **File → Add Package Dependencies** and enter the repository 
 For Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/fmalekpour/FTPClientSwift.git", from: "1.0.0")
+.package(url: "https://github.com/fmalekpour/FTPClientSwift.git", from: "1.0.1")
 ```
 
 The primary product is `FTPClientSwift`, imported as `FTPClient`.
