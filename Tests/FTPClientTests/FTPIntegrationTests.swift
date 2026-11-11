@@ -47,6 +47,8 @@ private final class SyncPathSwap: @unchecked Sendable {
 
 /// Minimal loopback-only FTP server used to exercise actual control/data sockets.
 private final class LoopbackFTPServer: @unchecked Sendable {
+    private let expectedUsername: String
+    private let expectedPassword: String
     private let listener: Int32
     let port: Int
     private let suppressGreeting: Bool
@@ -73,7 +75,9 @@ private final class LoopbackFTPServer: @unchecked Sendable {
     private let onRemoteListing: (@Sendable () -> Void)?
     private let payload = Data([0, 10, 13, 255, 65, 66])
 
-    init(suppressGreeting: Bool = false, supportsEPSV: Bool = true, supportsMLSD: Bool = true, ipv6: Bool = false, failTransferCompletion: Bool = false, stallDownload: Bool = false, supportsRestart: Bool = true, ignoresRestart: Bool = false, supportsEPRT: Bool = true, refuseActiveConnection: Bool = false, injectUnexpectedPeer: Bool = false, failSetModificationTime: Bool = false, unsupportedMFMT: Bool = false, xcrcResponse: String? = nil, rejectUTF8Option: Bool = false, supportsSize: Bool = true, wildcardListing: String? = nil, connectionLimit: Int = 1, failFirstTransfer: Bool = false, onActivePreliminary: (@Sendable () -> Void)? = nil, onControlAccepted: (@Sendable () -> Void)? = nil, onRemoteListing: (@Sendable () -> Void)? = nil) throws {
+    init(expectedUsername: String = "demo", expectedPassword: String = "secret", suppressGreeting: Bool = false, supportsEPSV: Bool = true, supportsMLSD: Bool = true, ipv6: Bool = false, failTransferCompletion: Bool = false, stallDownload: Bool = false, supportsRestart: Bool = true, ignoresRestart: Bool = false, supportsEPRT: Bool = true, refuseActiveConnection: Bool = false, injectUnexpectedPeer: Bool = false, failSetModificationTime: Bool = false, unsupportedMFMT: Bool = false, xcrcResponse: String? = nil, rejectUTF8Option: Bool = false, supportsSize: Bool = true, wildcardListing: String? = nil, connectionLimit: Int = 1, failFirstTransfer: Bool = false, onActivePreliminary: (@Sendable () -> Void)? = nil, onControlAccepted: (@Sendable () -> Void)? = nil, onRemoteListing: (@Sendable () -> Void)? = nil) throws {
+        self.expectedUsername = expectedUsername
+        self.expectedPassword = expectedPassword
         let (fd, port) = try Self.listen(ipv6: ipv6)
         self.listener = fd
         self.port = port
@@ -249,10 +253,10 @@ private final class LoopbackFTPServer: @unchecked Sendable {
                     command.remove(at: command.index(command.startIndex, offsetBy: 5))
                 }
                 switch command {
-                case "USER demo": Self.reply("331 Password required\r\n", to: control)
-                case let cmd where cmd.hasPrefix("USER demo@"):
+                case "USER \(expectedUsername)": Self.reply("331 Password required\r\n", to: control)
+                case let cmd where cmd.hasPrefix("USER \(expectedUsername)@"):
                     Self.reply("331 Password required\r\n", to: control)
-                case "PASS secret": Self.reply("230 Logged in\r\n", to: control)
+                case "PASS \(expectedPassword)": Self.reply("230 Logged in\r\n", to: control)
                 case "TYPE I": Self.reply("200 Binary\r\n", to: control)
                 case "TYPE A": Self.reply("200 ASCII\r\n", to: control)
                 case "PWD": Self.reply("257 \"/remote\" is current directory\r\n", to: control)
@@ -2371,7 +2375,7 @@ private final class LoopbackFTPServer: @unchecked Sendable {
     await client.disconnect()
 }
 @Test func emptyUsernameSendsAnonymousAndPreservesPassword() async throws {
-    let server = try LoopbackFTPServer()
+    let server = try LoopbackFTPServer(expectedUsername: "anonymous", expectedPassword: "supplied-password")
     let client = FTPClient(configuration: FTPClientConfiguration(
         host: "127.0.0.1", port: server.port, username: "", password: "supplied-password",
         redactSensitiveInformation: false
