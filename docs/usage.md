@@ -10,6 +10,8 @@ For Swift Package Manager:
 .package(url: "https://github.com/fmalekpour/FTPClientSwift.git", from: "1.0.1")
 ```
 
+The version above is a minimum requirement and permits later compatible 1.x releases; it does not need updating for every patch release. See the repository's [tags](https://github.com/fmalekpour/FTPClientSwift/tags) for available versions.
+
 The primary product is `FTPClientSwift`, imported as `FTPClient`.
 
 ## Connect securely

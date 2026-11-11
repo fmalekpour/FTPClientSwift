@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- Fix the anonymous-login integration test by allowing the test server to accept explicitly configured credentials.
+- Update release documentation. No library runtime behavior changes from 1.0.1.
+
 ## 1.0.1
 
 - Add opt-in console diagnostics for connections, FTP commands and replies, and transfers.
@@ -18,4 +23,4 @@ Initial release, prepared for publication.
 - One-way synchronization, previews, filtering, and opt-in destination-file deletion.
 - Compatibility facade and single-file upload helper.
 
-See [behavior and compatibility](docs/reference.md) for implementation limits. The release version is established by the `1.0.0` Git tag; `Package.swift` declares the Swift tools version separately.
+See [behavior and compatibility](docs/reference.md) for implementation limits. Release versions are established by Git tags; `Package.swift` declares the Swift tools version separately.

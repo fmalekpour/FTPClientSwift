@@ -29,7 +29,7 @@ In Xcode, choose **File → Add Package Dependencies**, enter:
 https://github.com/fmalekpour/FTPClientSwift.git
 ```
 
-Select **Up to Next Major Version** starting at **1.0.1**, then add the **FTPClientSwift** product to your target. Its Swift module is named **FTPClient**.
+Select **Up to Next Major Version** starting at the latest published version, then add the **FTPClientSwift** product to your target. Its Swift module is named **FTPClient**. Available versions are listed in the repository's [tags](https://github.com/fmalekpour/FTPClientSwift/tags).
 
 For a Swift package, add the dependency and product to `Package.swift`:
 
@@ -47,7 +47,7 @@ targets: [
 ]
 ```
 
-Version-based installation uses Git tags. Push the `1.0.1` tag to make this version available to Swift Package Manager.
+The `from: "1.0.1"` requirement above is a minimum compatible version, not a pin or a statement of the latest release. It allows later 1.x versions, so it does not need to change for each patch release. Existing projects can update their resolved package version in Xcode.
 
 ## Quick start
 

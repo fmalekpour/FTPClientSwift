@@ -1,6 +1,6 @@
 # Behavior and Compatibility Reference
 
-Detailed transfer semantics and implementation limits for version 1.0.1. See the [usage guide](usage.md) for examples.
+Detailed transfer semantics and implementation limits for the code in this checkout. See the [usage guide](usage.md) for examples. When viewing an older release, select its Git tag to read the matching documentation.
 
 ## TLS and certificates
 
